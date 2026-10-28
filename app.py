@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+import glob
 
 from PIL import Image, ImageOps
 import io
@@ -37,23 +38,26 @@ def crop_thumbnail(img_source, target_size=(500, 300)):
         return img_source
 
 @st.cache_data(show_spinner=False)
-def load_optimized_image(img_source, max_width=600):
+def load_optimized_image(img_source, max_width=1920):
+    """Keeps 1080p/1440p crisp resolution for fullscreen, but compresses file weight."""
     try:
-        # If it's empty or None, return a placeholder instead of crashing
         if not img_source:
-            return "https://placehold.co/400x250/1e1e24/fff?text=No+Image"
-            
+            return "https://placehold.co/600x400/1e1e24/fff?text=No+Image"
         if isinstance(img_source, str) and img_source.startswith("http"):
             return img_source
-        
+
         img = Image.open(img_source)
+        # Convert RGBA to RGB for efficient compression if saving as JPEG
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+
+        # Downscale only if absurdly larger than 1080p/1440p monitors
         if img.width > max_width:
             aspect = img.height / img.width
-            new_height = int(max_width * aspect)
-            img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
+            img = img.resize((max_width, int(max_width * aspect)), Image.Resampling.LANCZOS)
         return img
     except Exception:
-        return "https://placehold.co/400x250/1e1e24/fff?text=Error"
+        return "https://placehold.co/600x400/1e1e24/fff?text=Image+Error"
 
 # Helper to safely load images or fallback to placeholder if file is missing
 def get_img(path, fallback_text):
@@ -74,9 +78,8 @@ def move_carousel(key, direction, total_items, window_size):
 # 1. SIDEBAR (Personal Specs & Links)
 # ==========================================
 with st.sidebar:
-    st.header("Persona & Socials")
+    st.header("/info")
     
-    # >>> EDIT HERE: Personal meta details
     st.markdown("**Alias:** *Asterialumi*")
     st.markdown("**MBTI:** INFJ-T")
     st.markdown("**Zodiac:** Saggitarius")
@@ -84,7 +87,7 @@ with st.sidebar:
     st.markdown("**Year & Section:** 3rd Year - F1")
     
     st.divider()
-    st.subheader("🌐 Social Links")
+    st.subheader("/links")
     st.link_button("GitHub 🐙", "https://github.com/asterialumi", use_container_width=True)
     st.link_button("Itch 🎮", "https://asterialumi.itch.io", use_container_width=True)
     st.link_button("Instagram 📸", "https://instagram.com/asterialumi", use_container_width=True)
@@ -132,22 +135,38 @@ st.divider()
 st.header("/projects")
 
 # Card renderer with a border container and "See more" expansion
+# Isolated Fragment: Clicking ◀ or ▶ ONLY reruns this carousel, NOT the whole page
+@st.fragment
+def render_project_carousel(screenshots, state_key):
+    st.divider()
+    st.markdown("**Visual Previews & Screenshots:**")
+    
+    init_carousel_state(state_key, len(screenshots), window_size=3)
+    start_idx = st.session_state[state_key]
+    visible_imgs = screenshots[start_idx : start_idx + 3]
+    
+    img_cols = st.columns(3)
+    for i, img in enumerate(visible_imgs):
+        with img_cols[i]:
+            st.image(load_optimized_image(img, max_width=1200), use_container_width=True)
+            
+    ctrl_l, ctrl_r = st.columns(2)
+    with ctrl_l:
+        if st.button("◀ Previous", key=f"btn_prev_{state_key}", use_container_width=True):
+            move_carousel(state_key, "left", len(screenshots), 3)
+            st.rerun(scope="fragment")  # Reruns ONLY this box
+    with ctrl_r:
+        if st.button("Next ▶", key=f"btn_next_{state_key}", use_container_width=True):
+            move_carousel(state_key, "right", len(screenshots), 3)
+            st.rerun(scope="fragment")  # Reruns ONLY this box
+
+# Main Card Renderer
 def render_project_card(title, role, tools, short_desc, long_desc, img_thumb, link_url, screenshots=None, state_key=None):
     with st.container(border=True):
-        st.markdown("""
-        <style>
-        div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="column"]:first-child img {
-            height: 200px !important;
-            object-fit: cover !important;
-            border-radius: 8px !important;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-
         col_thumb, col_info = st.columns([1, 2], gap="large")
         
         with col_thumb:
-            st.image(load_optimized_image(img_thumb), use_container_width=True)
+            st.image(load_optimized_image(img_thumb, max_width=600), use_container_width=True)
             
         with col_info:
             st.subheader(title)
@@ -159,28 +178,9 @@ def render_project_card(title, role, tools, short_desc, long_desc, img_thumb, li
                 st.markdown("### Overview")
                 st.write(long_desc)
                 
+                # Calls the isolated fragment
                 if screenshots and state_key:
-                    st.divider()
-                    st.markdown("**Visual Previews & Screenshots:**")
-                    
-                    init_carousel_state(state_key, len(screenshots), window_size=3)
-                    start_idx = st.session_state[state_key]
-                    visible_imgs = screenshots[start_idx : start_idx + 3]
-                    
-                    img_cols = st.columns(3)
-                    for i, img in enumerate(visible_imgs):
-                        with img_cols[i]:
-                            st.image(load_optimized_image(img), use_container_width=True)
-                            
-                    ctrl_l, ctrl_r = st.columns(2)
-                    with ctrl_l:
-                        if st.button("◀ Previous", key=f"btn_prev_{state_key}", use_container_width=True):
-                            move_carousel(state_key, "left", len(screenshots), 3)
-                            st.rerun()
-                    with ctrl_r:
-                        if st.button("Next ▶", key=f"btn_next_{state_key}", use_container_width=True):
-                            move_carousel(state_key, "right", len(screenshots), 3)
-                            st.rerun()
+                    render_project_carousel(screenshots, state_key)
 
 # --- Screenshot lists (Replace/add files into assets/screenshots/) ---
 kara_shots = [get_img(f"assets/screenshots/kara_{i}.png", f"Kara+{i}") for i in range(1, 5)]
@@ -328,42 +328,30 @@ with tab_streaks:
 st.divider()
 
 # ==========================================
-# 5. SHOWCASE SECTION (Own Section)
+# 5. SHOWCASE SECTION (Masonry Gallery)
 # ==========================================
 st.header("/showcase")
+st.caption("Click any piece to expand into high-resolution fullscreen.")
 
-def render_gallery_row(category_name, images, state_key):
-    st.subheader(f"📂 {category_name}")
-    init_carousel_state(state_key, len(images), window_size=5)
-    start_idx = st.session_state[state_key]
-    visible = images[start_idx : start_idx + 5]
-    
-    cols = st.columns(5)
-    for i, img in enumerate(visible):
-        with cols[i]:
-            st.image(load_optimized_image(img, max_width=400), use_container_width=True)
-            
-    ctrl_l, ctrl_r = st.columns(2)
-    with ctrl_l:
-        if st.button("◀", key=f"prev_{state_key}", use_container_width=True):
-            move_carousel(state_key, "left", len(images), 5)
-            st.rerun()
-    with ctrl_r:
-        if st.button("▶", key=f"next_{state_key}", use_container_width=True):
-            move_carousel(state_key, "right", len(images), 5)
-            st.rerun()
-    st.write("")
+# 1. Grab ALL images from assets/showcase and all its subfolders automatically
+search_query = get_asset_path(os.path.join("assets", "showcase", "**", "*.*"))
+showcase_files = sorted(glob.glob(search_query, recursive=True))
 
-# Image lists from assets/showcase/ (falls back to placeholder if file not found)
-art_images = [get_img(f"assets/showcase/art_{i}.png", f"Art+{i}") for i in range(1, 9)]
-design_images = [get_img(f"assets/showcase/design_{i}.png", f"Design+{i}") for i in range(1, 9)]
-photo_images = [get_img(f"assets/showcase/photo_{i}.png", f"Photo+{i}") for i in range(1, 9)]
+# 2. Fallbacks if the folder is completely empty
+if not showcase_files:
+    showcase_files = [
+        f"https://placehold.co/600x{400 if i % 2 == 0 else 750}/1e1e24/fff?text=Work+{i}"
+        for i in range(1, 10)
+    ]
 
-render_gallery_row("Art", art_images, "gallery_art")
-render_gallery_row("Design", design_images, "gallery_design")
-render_gallery_row("Photography", photo_images, "gallery_photo")
-
-st.divider()
+# 3. Flow everything into a continuous 3-column masonry wall
+cols = st.columns(3, gap="medium")
+for idx, img_path in enumerate(showcase_files):
+    col = cols[idx % 3]
+    with col:
+        # Loaded from RAM cache at full resolution; browser scales it to column width
+        st.image(load_optimized_image(img_path), use_container_width=True)
+        st.write("") # subtle spacing between stacked items
 
 # ==========================================
 # 6. FEEDBACK SECTION (Sends to your Email)
