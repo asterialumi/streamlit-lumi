@@ -1,17 +1,67 @@
 import streamlit as st
 import pandas as pd
-import requests
 import os
 
+from PIL import Image, ImageOps
+import io
+import requests
+    
 # ==========================================
 # 0. CONFIGURATION & STATE SETUP
 # ==========================================
 st.set_page_config(page_title="Asterialumi's Portfolio", page_icon="🎨", layout="wide")
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # Helper for sliding carousel indices
 def init_carousel_state(key, total_items, window_size):
     if key not in st.session_state:
         st.session_state[key] = 0
+
+def get_asset_path(relative_path):
+    """Converts 'assets/photo.png' to a safe absolute path for Windows."""
+    return os.path.join(BASE_DIR, relative_path)
+
+# For image caching
+@st.cache_data(show_spinner=False)
+def crop_thumbnail(img_source, target_size=(500, 300)):
+    """Cached: Only opens and crops the image once, then serves from RAM."""
+    try:
+        if isinstance(img_source, str) and img_source.startswith("http"):
+            res = requests.get(img_source, timeout=3)
+            img = Image.open(io.BytesIO(res.content))
+        else:
+            img = Image.open(img_source)
+        return ImageOps.fit(img, target_size, method=Image.Resampling.LANCZOS)
+    except Exception:
+        return img_source
+
+@st.cache_data(show_spinner=False)
+def load_optimized_image(img_source, max_width=600):
+    try:
+        # If it's empty or None, return a placeholder instead of crashing
+        if not img_source:
+            return "https://placehold.co/400x250/1e1e24/fff?text=No+Image"
+            
+        if isinstance(img_source, str) and img_source.startswith("http"):
+            return img_source
+        
+        img = Image.open(img_source)
+        if img.width > max_width:
+            aspect = img.height / img.width
+            new_height = int(max_width * aspect)
+            img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
+        return img
+    except Exception:
+        return "https://placehold.co/400x250/1e1e24/fff?text=Error"
+
+# Helper to safely load images or fallback to placeholder if file is missing
+def get_img(path, fallback_text):
+    full_path = get_asset_path(path)
+    if os.path.exists(full_path):
+        return full_path
+    # Fallback to web placeholder if file doesn't exist yet
+    return f"https://placehold.co/400x250/1e1e24/fff?text={fallback_text}"
 
 def move_carousel(key, direction, total_items, window_size):
     max_idx = max(0, total_items - window_size)
@@ -46,7 +96,7 @@ st.header("/about")
 col_about_img, col_about_text = st.columns([1, 2], gap="large")
 
 with col_about_img:
-    st.image("assets/me.jpg", use_container_width=True)
+    st.image(get_img("assets/me.jpg", "Profile+Photo"), use_container_width=True)
 
 with col_about_text:
     st.title("John Vincent's Portfolio")
@@ -81,10 +131,6 @@ st.divider()
 # ==========================================
 st.header("/projects")
 
-# Helper to safely load images or fallback to placeholder if file is missing
-def get_img(path, fallback_text):
-    return path if os.path.exists(path) else f"https://placehold.co/400x250/1e1e24/fff?text={fallback_text}"
-
 # Card renderer with a border container and "See more" expansion
 def render_project_card(title, role, tools, short_desc, long_desc, img_thumb, link_url, screenshots=None, state_key=None):
     with st.container(border=True):
@@ -101,7 +147,7 @@ def render_project_card(title, role, tools, short_desc, long_desc, img_thumb, li
         col_thumb, col_info = st.columns([1, 2], gap="large")
         
         with col_thumb:
-            st.image(img_thumb, use_container_width=True)
+            st.image(load_optimized_image(img_thumb), use_container_width=True)
             
         with col_info:
             st.subheader(title)
@@ -124,7 +170,7 @@ def render_project_card(title, role, tools, short_desc, long_desc, img_thumb, li
                     img_cols = st.columns(3)
                     for i, img in enumerate(visible_imgs):
                         with img_cols[i]:
-                            st.image(img, use_container_width=True)
+                            st.image(load_optimized_image(img), use_container_width=True)
                             
                     ctrl_l, ctrl_r = st.columns(2)
                     with ctrl_l:
@@ -295,7 +341,7 @@ def render_gallery_row(category_name, images, state_key):
     cols = st.columns(5)
     for i, img in enumerate(visible):
         with cols[i]:
-            st.image(img, use_container_width=True)
+            st.image(load_optimized_image(img, max_width=400), use_container_width=True)
             
     ctrl_l, ctrl_r = st.columns(2)
     with ctrl_l:
