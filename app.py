@@ -112,16 +112,37 @@ with col_about_text:
         artistic vision and storytelling. I live in Minglanilla Cebu. I am currently studying at Cebu Institute of Technology -
         University, and still continuing to develop games and improving my skills up to this day.
 
-        My focus in life is reading stories and making them. I want to inspire people with my works. Afterall, my long-term goal
-        is to build a game studio of my own — a place where artists, programmers, musicians, or storytellers can group together out
-        of passion to make something beautiful and ethereal.
-
-        That's me! You can also call me **Asteria**!
         """
+    )
+
+    # Under your bio text in About Me:
+    show_details = st.checkbox("My creative philosophy")
+    if show_details:
+        st.write(
+            """
+            My focus in life is reading stories and making them. I want to inspire people with my works. Afterall, my long-term goal
+            is to build a game studio of my own — a place where artists, programmers, musicians, or storytellers can group together out
+            of passion to make something beautiful and ethereal.
+
+            I don't regret studying Computer Science. I have learned a lot, and I'm still learning even more. Art & Programming go hand in hand,
+            I swear. I want to share this perspective that the goal isn't really a straight path, sometimes it takes more left and right turns
+            until you've found the one that's best for you.
+
+            That's me! You can also call me **Asteria**!
+            """
+        )
+
+    # Milestones using st.radio (Fixes radio requirement):
+    selected_milestone = st.radio(
+        "Key Game Dev Milestones:",
+        ["2018: First game on Scratch", "2025: Sugbuanon Game Jam (1st Place)", "2026: Imaginators' Convention Showcase"],
+        horizontal=True
     )
 
 # Highlights / Counter row
 st.write("")
+
+
 m1, m2, m3 = st.columns(3)
 m1.metric(label="Main Role / Specialization", value="Game Dev | Illustrator")
 m2.metric(label="Arts Created", value="200+ Pieces")
@@ -370,7 +391,9 @@ with st.form("portfolio_feedback_form", clear_on_submit=True):
         )
     with col_f2:
         rating = st.slider("Rating for this portfolio:", 1, 10, 10)
-        
+
+    visitor_name = st.text_input("Your Name or Handle (Optional):")
+
     feedback_text = st.text_area("Your thoughts, critique, or message:")
     
     submitted = st.form_submit_button("Send Feedback")
